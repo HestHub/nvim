@@ -12,22 +12,39 @@ return {
     end
   end,
   opts = function()
-    -- PERF: we don't need this lualine require madness 🤷
     local lualine_require = require("lualine_require")
     lualine_require.require = require
     local icons = LazyVim.config.icons
 
-    local mode_width = 0
-    local root_width = 0
-    local cwd_width = 0
-    local profiler_width = 0
-    local noice_width = 0
-    local dap_width = 0
-    local lazy_width = 0
-    local diagnostic_width = 0
-    local filetype_width = 0
-    local filename_width = 0
-    local noice_name = ""
+    local component_widths = {}
+
+    -- check width of current component and add to maps
+    local function add_width(str, name)
+      if not str or str == "" then
+        component_widths[name] = 0
+        return str
+      end
+      component_widths[name] = #vim.api.nvim_eval_statusline(str, {}).str
+      return str
+    end
+
+    -- fill space bweteen left-most components and middle of terminal
+    local function fill_space()
+      local used_space = 0
+      for _, width in pairs(component_widths) do
+        used_space = used_space + width
+      end
+
+      local filetype_w = component_widths["filetype"] or 0
+      local filename_w = component_widths["filename"] or 0
+
+      used_space = used_space - (filename_w + filetype_w)
+
+      local term_width = vim.opt.columns:get()
+
+      local fill = string.rep(" ", math.floor((term_width - filename_w - filetype_w) / 2) - used_space)
+      return fill
+    end
 
     vim.o.laststatus = vim.g.lualine_laststatus
     local opts = {
@@ -43,56 +60,39 @@ return {
       },
       sections = {
         lualine_a = {
-          {
+          { -- show current vim mode single character
             function()
               local mode = vim.api.nvim_get_mode()["mode"]
               return "" .. string.format("%-1s", mode)
             end,
             fmt = function(str)
-              local eval_str = vim.api.nvim_eval_statusline(str, {}).str
-              mode_width = #eval_str
-              return str
+              return add_width(str, "mode")
             end,
           },
         },
         lualine_b = {},
         lualine_c = {
-          {
+          { -- show cwd (project dir nvim.project)
             function()
               local cwd = vim.fn.getcwd()
               return "󱉭 " .. vim.fs.basename(cwd)
             end,
             color = { fg = Snacks.util.color("Special") },
             fmt = function(str)
-              if str == "" then
-                cwd_width = 0
-                return str
-              end
-              local eval_str = vim.api.nvim_eval_statusline(str, {}).str
-              cwd_width = #eval_str
-              return str
+              return add_width(str, "root")
             end,
           },
-          -- stylua: ignore
-          ---@diagnostic disable-next-line: assign-type-mismatch
-          {
+          { -- show cwd if it does not match prev component
             function()
               return LazyVim.lualine.root_dir({ icon = ">" })[1]()
             end,
             color = { fg = Snacks.util.color("Special") }, -- Optional: Customize the appearance
-            padding = {left = 0, right = 0},
-            fmt = function (str)
-              if str == "" then
-                root_width = 0
-                return str
-              end
-               local eval_str = vim.api.nvim_eval_statusline(str, {}).str
-              root_width = #eval_str
-              return str
-
-            end
+            padding = { left = 0, right = 0 },
+            fmt = function(str)
+              return add_width(str, "cwd")
+            end,
           },
-          {
+          { -- show profiler events if enabled
             function()
               return Snacks.profiler.status()[1]()
             end,
@@ -101,37 +101,10 @@ return {
               return require("snacks.profiler").core.running
             end,
             fmt = function(str)
-              if str == "" then
-                profiler_width = 0
-                return str
-              end
-              local eval_str = vim.api.nvim_eval_statusline(str, {}).str
-              profiler_width = #eval_str
-              return str
+              return add_width(str, "profiler")
             end,
           },
-          -- {
-          --   function()
-          --     return require("noice").api.status.mode.get()
-          --   end,
-          --   cond = function()
-          --     return package.loaded["noice"] and require("noice").api.status.mode.has()
-          --   end,
-          --   color = function()
-          --     return { fg = Snacks.util.color("Constant") }
-          --   end,
-          --   fmt = function(str)
-          --     noice_name = str
-          --     if str == nil then
-          --       noice_width = 0
-          --       return str
-          --     end
-          --     local eval_str = vim.api.nvim_eval_statusline(str, {}).str
-          --     noice_width = #eval_str
-          --     return str
-          --   end,
-          -- },
-          {
+          { -- show macro recording
             function()
               local reg = vim.fn.reg_recording()
               if reg == "" then
@@ -144,16 +117,10 @@ return {
               return { fg = Snacks.util.color("Constant") }
             end,
             fmt = function(str)
-              if str == nil then
-                noice_width = 0
-                return str
-              end
-              local eval_str = vim.api.nvim_eval_statusline(str, {}).str
-              noice_width = #eval_str
-              return str
+              return add_width(str, "recording")
             end,
           },
-          {
+          { -- show dap info
             function()
               return "  " .. require("dap").status()
             end,
@@ -164,32 +131,20 @@ return {
               return { fg = Snacks.util.color("Debug") }
             end,
             fmt = function(str)
-              if str == "" then
-                dap_width = 0
-                return str
-              end
-              local eval_str = vim.api.nvim_eval_statusline(str, {}).str
-              dap_width = #eval_str
-              return str
+              return add_width(str, "dap")
             end,
           },
-          {
+          { -- show lazy update status
             require("lazy.status").updates,
             cond = require("lazy.status").has_updates,
             color = function()
               return { fg = Snacks.util.color("Special") }
             end,
             fmt = function(str)
-              if str == "" then
-                lazy_width = 0
-                return str
-              end
-              local eval_str = vim.api.nvim_eval_statusline(str, {}).str
-              lazy_width = #eval_str
-              return str
+              return add_width(str, "lazy")
             end,
           },
-          {
+          { -- show diagnostic info
             "diagnostics",
             symbols = {
               error = icons.diagnostics.Error,
@@ -198,61 +153,32 @@ return {
               hint = icons.diagnostics.Hint,
             },
             fmt = function(str)
-              if str == "" then
-                diagnostic_width = 0
-                return str
-              end
-              local eval_str = vim.api.nvim_eval_statusline(str, {}).str
-              diagnostic_width = #eval_str
-              return str
+              return add_width(str, "diagnostics")
             end,
           },
-          {
+          { -- fill space to center filename
             function()
-              local used_space = mode_width
-                + root_width
-                + cwd_width
-                + profiler_width
-                + noice_width
-                + lazy_width
-                + dap_width
-                + diagnostic_width
-              local term_width = vim.opt.columns:get()
-              local fill_space =
-                string.rep(" ", math.floor((term_width - filename_width - filetype_width) / 2) - used_space)
-              return fill_space
+              return fill_space()
             end,
             padding = { left = 0, right = 0 },
           },
-          {
+          { -- filetype icon
             "filetype",
             icon_only = true,
             separator = "",
             padding = { left = 0, right = 0 },
             fmt = function(str)
-              if str == "" then
-                filetype_width = 0
-                return str
-              end
-              local eval_str = vim.api.nvim_eval_statusline(str, {}).str
-              filetype_width = #eval_str
-              return str
+              return add_width(str, "filetype")
             end,
           },
-          {
+          { -- filename centered to middle of window
             "filename",
             file_status = true,
             newfile_status = true,
             color = { fg = Snacks.util.color("Special"), gui = "BOLD" },
             padding = { left = 0, right = 0 },
             fmt = function(str)
-              if str == "" then
-                filename_width = 0
-                return str
-              end
-              local eval_str = vim.api.nvim_eval_statusline(str, {}).str
-              filename_width = #eval_str
-              return str
+              return add_width(str, "filename")
             end,
           },
         },
