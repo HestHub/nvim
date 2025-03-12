@@ -94,12 +94,12 @@ return {
           },
           { -- show profiler events if enabled
             function()
-              return Snacks.profiler.status()[1]()
+              if Snacks.profiler.core.running then
+                return Snacks.profiler.status()[1]()
+              end
+              return ""
             end,
             color = "DiagnosticError",
-            cond = function()
-              return require("snacks.profiler").core.running
-            end,
             fmt = function(str)
               return add_width(str, "profiler")
             end,
