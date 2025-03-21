@@ -18,6 +18,7 @@ return {
 
     local component_widths = {}
 
+    local file_path = 0
     -- check width of current component and add to maps
     local function add_width(str, name)
       if not str or str == "" then
@@ -178,7 +179,11 @@ return {
             color = { fg = Snacks.util.color("Special"), gui = "BOLD" },
             padding = { left = 0, right = 0 },
             fmt = function(str)
-              return add_width(str, "filename")
+              local filename = (file_path == 0 and str or vim.fn.expand("%:p"))
+              return add_width(filename, "filename")
+            end,
+            on_click = function()
+              file_path = (file_path == 0 and 1 or 0)
             end,
           },
         },
